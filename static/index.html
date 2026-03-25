@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Listen Downloader</title>
+    <!-- Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Sidebar / Navigation -->
+        <nav class="sidebar glass">
+            <div class="logo">
+                <i class="ph-fill ph-music-notes-simple"></i>
+                <h2>Listen Downloader</h2>
+            </div>
+            
+            <ul class="nav-links">
+                <li class="active" data-target="search-view">
+                    <i class="ph ph-compass"></i>
+                    <span>Discover</span>
+                </li>
+                <li data-target="library-view">
+                    <i class="ph ph-books"></i>
+                    <span>My Library</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            
+            <!-- DISCOVER VIEW (Merged Search & Recommendations) -->
+            <section id="search-view" class="view active-view">
+                <div class="header">
+                    <h1>Discover</h1>
+                    <p>Search for specific tracks or explore personalized recommendations.</p>
+                </div>
+
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" id="searchInput" placeholder="Search for songs, artists, or albums..." />
+                    <button id="searchBtn">Search</button>
+                    <!-- Loading Spinner -->
+                    <div id="searchLoader" class="loader hidden"></div>
+                </div>
+                
+                <div id="discoverTitleContainer" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 id="discoverTitle" style="color: var(--text-muted);">For You</h3>
+                    <button class="primary-btn" id="refreshRecBtn" style="padding: 8px 16px; font-size: 0.95rem;">
+                        <i class="ph ph-arrows-clockwise"></i> Refresh For You
+                    </button>
+                </div>
+
+                <div class="results-grid" id="resultsGrid">
+                    <!-- Results and Recommendations injected here -->
+                </div>
+                
+                <!-- Infinite Scroll Loading Indicator -->
+                <div id="recLoader" class="loader hidden" style="margin: 2rem auto; width: 30px; height: 30px;"></div>
+            </section>
+
+            <!-- LIBRARY VIEW -->
+            <section id="library-view" class="view">
+                <div class="header">
+                    <h1>My Library</h1>
+                    <p>Your offline downloaded tracks.</p>
+                    <div class="header-actions" style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="primary-btn" id="refreshLibBtn">
+                            <i class="ph ph-arrows-clockwise"></i> Refresh Library
+                        </button>
+                        <button class="primary-btn" id="createPlaylistBtn">
+                            <i class="ph ph-plus"></i> New Playlist
+                        </button>
+                    </div>
+                </div>
+
+                <div class="library-container">
+                    <div class="playlists-sidebar">
+                        <h3>Playlists</h3>
+                        <ul id="playlistsList" class="playlists-list">
+                            <!-- Playlists injected here -->
+                        </ul>
+                    </div>
+                    
+                    <div class="library-main">
+                        <div id="libLoader" class="loader hidden"></div>
+                        <h3 id="librarySectionTitle">All Tracks</h3>
+                        <div class="library-list" id="libraryList">
+                            <!-- Downloaded items injected here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Bottom Audio Player -->
+    <div class="audio-player glass" id="player">
+        <audio id="audioElement"></audio>
+        
+        <div class="track-info">
+            <img src="https://via.placeholder.com/60" alt="Cover" id="playerCover">
+            <div class="track-details">
+                <h4 id="playerTitle">No Track Selected</h4>
+                <p id="playerArtist">Listen Downloader</p>
+            </div>
+        </div>
+
+        <div class="player-controls">
+            <div class="main-controls">
+                <button class="ctrl-btn" id="prevBtn"><i class="ph-fill ph-skip-back"></i></button>
+                <button class="ctrl-btn play-pause glass" id="playPauseBtn"><i class="ph-fill ph-play"></i></button>
+                <button class="ctrl-btn" id="nextBtn"><i class="ph-fill ph-skip-forward"></i></button>
+            </div>
+            
+            <div class="progress-container">
+                <span id="currentTime">0:00</span>
+                <input type="range" id="progressBar" min="0" max="100" value="0">
+                <span id="totalTime">0:00</span>
+            </div>
+        </div>
+
+        <div class="volume-controls">
+            <button class="ctrl-btn" id="loopBtn" title="Loop Track"><i class="ph ph-repeat"></i></button>
+            <button class="ctrl-btn" id="shuffleBtn" title="Shuffle Playlist" style="margin-right: 12px;"><i class="ph ph-shuffle"></i></button>
+            <i class="ph-fill ph-speaker-high" id="muteIcon"></i>
+            <input type="range" id="volumeBar" min="0" max="100" value="100">
+        </div>
+    </div>
+
+    <!-- Playlist Modal -->
+    <div id="playlistModal" class="modal hidden">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h2>Add to Playlist</h2>
+                <button class="close-btn" id="closePlaylistModal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="new-playlist-input">
+                    <input type="text" id="newPlaylistName" placeholder="New Playlist Name">
+                    <button id="createNewPlaylistBtn">Create</button>
+                </div>
+                <ul id="modalPlaylistsList" class="modal-playlists-list">
+                    <!-- Playlists to add to -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="toastContainer"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

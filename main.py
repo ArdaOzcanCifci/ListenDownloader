@@ -13,8 +13,12 @@ import threading
 import uvicorn
 import webview
 import sys
+from collections import deque
 
 app = FastAPI(title="Listen Downloader Backend")
+
+# Cache to avoid recommending the same tracks repeatedly
+RECENT_RECOMMENDATIONS = deque(maxlen=200)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # --- PyInstaller Path Resolution ---
@@ -207,11 +211,11 @@ async def update_playlists(request: Request):
 @app.get("/api/recommendations")
 async def get_recommendations():
     """
-    Naively generate recommendations by taking a random artist from the user's library 
-    and searching them up on YouTube Music to find similar tracks.
-    Returns randomized results to support infinite scroll.
+    Generate recommendations by getting 'Radio' related tracks based on a random song from 
+    the user's library. Caches recently recommended tracks to avoid duplicates.
     """
     import random
+    global RECENT_RECOMMENDATIONS
     try:
         library = []
         if os.path.exists(DL_AUDIO_DIR):
@@ -220,43 +224,71 @@ async def get_recommendations():
                     with open(os.path.join(DL_AUDIO_DIR, filename), 'r', encoding='utf-8') as f:
                         library.append(json.load(f))
                         
+        existing_video_ids = set([item.get("videoId") for item in library if item.get("videoId")])
+        
+        results = []
         if not library:
             # If library is empty, return some generic popular stuff
             search_query = "Top Hits " + str(random.randint(2010, 2024))
+            results = ytmusic.search(search_query, filter="songs", limit=40)
         else:
-            # Pick the artist of a random downloaded song as a seed
+            # Pick a random downloaded song as a seed
             seed_song = random.choice(library)
-            seed_artist = seed_song.get("artists", "").split(",")[0].strip()
-            # Append a random popular keyword to add variety for infinite scroll
-            modifiers = ["", "live", "acoustic", "remix", "songs", "lyrics", "audio"]
-            search_query = f"{seed_artist} {random.choice(modifiers)}"
+            seed_id = seed_song.get("videoId")
             
-        results = ytmusic.search(search_query, filter="songs", limit=20)
-        
-        # Filter out songs that are already in the library
-        existing_video_ids = set([item.get("videoId") for item in library])
+            if seed_id:
+                try:
+                    # Use get_watch_playlist for "Radio" style recommendations
+                    watch_playlist = ytmusic.get_watch_playlist(videoId=seed_id, limit=40)
+                    results = watch_playlist.get("tracks", [])
+                except Exception as e:
+                    print(f"Watch playlist failed: {e}")
+                    
+            # Fallback to search if watch_playlist failed or seed_id missing
+            if not results:
+                seed_artist = seed_song.get("artists", "").split(",")[0].strip()
+                modifiers = ["", "live", "acoustic", "remix", "songs", "lyrics", "audio"]
+                search_query = f"{seed_artist} {random.choice(modifiers)}"
+                results = ytmusic.search(search_query, filter="songs", limit=40)
         
         formatted_results = []
-        # Randomize the returned results order to ensure UI looks fresh
+        # Randomize the returned results order
         random.shuffle(results)
         
         for res in results:
-            if res.get('resultType') == 'song' and res.get('videoId') not in existing_video_ids:
-                thumbnails = res.get('thumbnails', [])
+            vid = res.get('videoId')
+            # Check if valid video id, not in library, and not recently recommended
+            if vid and vid not in existing_video_ids and vid not in RECENT_RECOMMENDATIONS:
+                # Discard non-song results if from search
+                if res.get('resultType') and res.get('resultType') != 'song':
+                    continue
+                    
+                thumbnails = res.get('thumbnails') or res.get('thumbnail') or []
                 best_thumbnail = thumbnails[-1]['url'] if thumbnails else ""
                 if best_thumbnail and "=" in best_thumbnail:
                     best_thumbnail = best_thumbnail.split("=")[0]
                 
-                artists = ", ".join([a.get('name', '') for a in res.get('artists', [])])
+                artists_data = res.get('artists', [])
+                artists = ""
+                if isinstance(artists_data, list):
+                    artists = ", ".join([a.get('name', '') for a in artists_data if isinstance(a, dict)])
+                elif isinstance(artists_data, str):
+                    artists = artists_data
+                
+                # Length comes from watch_playlist, duration comes from search
+                duration = res.get('duration') or res.get('length') or '0:00'
                 
                 formatted_results.append({
-                    "videoId": res.get('videoId'),
-                    "title": res.get('title'),
+                    "videoId": vid,
+                    "title": res.get('title', 'Unknown Title'),
                     "artists": artists,
                     "album": res.get('album', {}).get('name', 'Single') if res.get('album') else 'Single',
-                    "duration": res.get('duration', '0:00'),
+                    "duration": duration,
                     "thumbnail": best_thumbnail
                 })
+                
+                # Add to recent list
+                RECENT_RECOMMENDATIONS.append(vid)
                 
                 if len(formatted_results) >= 12:  # 12 recommendations per fetch
                     break
@@ -304,7 +336,7 @@ if __name__ == "__main__":
     server_thread.start()
     
     # Create the PyWebView window
-    webview.create_window(
+    window = webview.create_window(
         "Listen Downloader", 
         "http://127.0.0.1:8000/", 
         width=1200, 
@@ -313,5 +345,26 @@ if __name__ == "__main__":
         background_color='#0f0f13'  # Match frontend dark theme
     )
     
+    # Global Media Hotkeys Listener
+    try:
+        from pynput import keyboard
+        def on_press(key):
+            try:
+                if key == keyboard.Key.media_play_pause:
+                    window.evaluate_js("document.getElementById('playPauseBtn').click()")
+                elif key == keyboard.Key.media_next:
+                    window.evaluate_js("document.getElementById('nextBtn').click()")
+                elif key == keyboard.Key.media_previous:
+                    window.evaluate_js("document.getElementById('prevBtn').click()")
+            except Exception:
+                pass
+
+        listener = keyboard.Listener(on_press=on_press)
+        # We make it daemon so it exits when the main thread exits
+        listener.daemon = True
+        listener.start()
+    except Exception as e:
+        print(f"Hotkeys failed to initialize: {e}")
+    
     # Block and run the webview loop
-    webview.start()
+    webview.start(private_mode=False)

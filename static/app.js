@@ -1,3 +1,5 @@
+document.addEventListener('contextmenu', event => event.preventDefault());
+
 document.addEventListener('DOMContentLoaded', () => {
     // ==== Navigation ====
     const navLinks = document.querySelectorAll('.nav-links li');

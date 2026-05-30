@@ -87,7 +87,7 @@ ytmusic_app/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/listen-downloader.git
+git clone https://github.com/ArdaOzcanCifci/listen-downloader.git
 cd listen-downloader
 
 # 2. Create a virtual environment (recommended)

@@ -5,26 +5,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const navLinks = document.querySelectorAll('.nav-links li');
     const views = document.querySelectorAll('.view');
     
-    navLinks.forEach(link => {
-        link.addEventListener('click', () => {
-            navLinks.forEach(l => l.classList.remove('active'));
-            views.forEach(v => v.classList.remove('active-view'));
-            
-            link.classList.add('active');
-            const target = link.getAttribute('data-target');
-            document.getElementById(target).classList.add('active-view');
-            
-            if (target === 'library-view') {
-                loadPlaylists();
-                loadLibrary();
-            } else if (target === 'search-view') {
-                // When navigating to Discover, check if we need to load initial recommendations
-                if(searchInput.value.trim() === '' && resultsGrid.children.length === 0) {
-                     loadRecommendations();
-                }
+    function activateView(target) {
+        navLinks.forEach(l => l.classList.toggle('active', l.getAttribute('data-target') === target));
+        views.forEach(v => v.classList.remove('active-view'));
+        const el = document.getElementById(target);
+        if (el) el.classList.add('active-view');
+
+        if (target === 'library-view') {
+            loadPlaylists();
+            loadLibrary();
+        } else if (target === 'search-view') {
+            // When navigating to Discover, check if we need to load initial recommendations
+            if (searchInput.value.trim() === '' && resultsGrid.children.length === 0) {
+                loadRecommendations();
             }
-        });
+        }
+    }
+
+    navLinks.forEach(link => {
+        link.addEventListener('click', () => activateView(link.getAttribute('data-target')));
     });
+
+    // Load playlists up-front so the "Add to Playlist" dialog works from
+    // anywhere (e.g. the Now Playing queue) without first visiting the Library.
+    loadPlaylists();
 
     // Make sure we load the library first so we can check for downloaded tracks
     loadLibrary().then(() => {
@@ -133,11 +137,13 @@ document.addEventListener('DOMContentLoaded', () => {
             wrap.addEventListener('mouseenter', () => overlay.style.display = 'flex');
             wrap.addEventListener('mouseleave', () => overlay.style.display = 'none');
             
-            // Click to stream
+            // Click to stream. Use the item's index within its own results
+            // batch (not the container's child index, which is misaligned once
+            // infinite scroll has appended additional batches).
             card.addEventListener('click', (e) => {
                  // Prevent stream if they clicked download button directly
                  if (e.target.closest('.btn-download')) return;
-                 streamTrack(item, Array.from(container.children).indexOf(card), Array.from(results));
+                 streamTrack(item, index, Array.from(results));
             });
             
             const btn = card.querySelector('.btn-download');
@@ -171,7 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast('Track already exists in Library!', 'info');
                 } else {
                     showToast('Download complete.', 'success');
-                    // Add directly to currentLibrary to immediately update UI state
+                }
+                // Reflect downloaded state in the in-memory library right away.
+                if (!currentLibrary.some(t => t.videoId === item.videoId)) {
                     currentLibrary.push(item);
                 }
                 btnElement.innerHTML = '<i class="ph-fill ph-check"></i>';
@@ -179,6 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnElement.style.background = '#4caf50';
                 btnElement.title = "Already Downloaded";
                 btnElement.disabled = true;
+                // Refresh the Now Playing queue so its download / add-to-playlist
+                // buttons reflect the new downloaded state immediately.
+                renderNowPlaying();
             } else {
                 throw new Error(data.detail);
             }
@@ -203,6 +214,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function fetchRecommendations() {
+        const res = await fetch('/api/recommendations');
+        const data = await res.json();
+        return (data && data.recommendations) ? data.recommendations : [];
+    }
+
     async function loadRecommendations() {
         // Only load recommendations if we are actually showing them
         if (searchInput.value.trim() !== '') return;
@@ -212,11 +229,10 @@ document.addEventListener('DOMContentLoaded', () => {
         recLoader.classList.remove('hidden');
         
         try {
-            const res = await fetch('/api/recommendations');
-            const data = await res.json();
+            const recommendations = await fetchRecommendations();
             
-            if (data.recommendations && data.recommendations.length > 0) {
-                renderSearchResults(data.recommendations, resultsGrid);
+            if (recommendations.length > 0) {
+                renderSearchResults(recommendations, resultsGrid);
             } else if (resultsGrid.children.length === 0) {
                 resultsGrid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: var(--text-muted)">Download some songs to get better recommendations.</p>';
             }
@@ -343,8 +359,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             li.addEventListener('click', () => {
                 currentActivePlaylistId = pl.id;
+                activateView('library-view');
                 renderPlaylistsSidebar();
-                renderLibrary(currentLibrary);
             });
             list.appendChild(li);
         });
@@ -352,12 +368,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const allTracksLi = list.querySelector('[data-id="all"]');
         allTracksLi.addEventListener('click', () => {
             currentActivePlaylistId = null;
+            activateView('library-view');
             renderPlaylistsSidebar();
-            renderLibrary(currentLibrary);
         });
     }
 
     createPlaylistBtn.addEventListener('click', () => openPlaylistModal());
+
+    const sidebarNewPlaylistBtn = document.getElementById('sidebarNewPlaylistBtn');
+    if (sidebarNewPlaylistBtn) sidebarNewPlaylistBtn.addEventListener('click', () => openPlaylistModal());
     
     function openPlaylistModal(track = null) {
         trackToAdd = track;
@@ -476,6 +495,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const playBtn = el.querySelector('.lib-play-btn');
             playBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                currentContextLabel = sectionTitle ? sectionTitle.textContent : 'My Library';
+                queueAutoExtend = false;
                 currentLibraryContext = displayList; 
                 playTrack(displayList.indexOf(item), currentLibraryContext);
             });
@@ -530,6 +551,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             el.addEventListener('click', () => {
+                currentContextLabel = sectionTitle ? sectionTitle.textContent : 'My Library';
+                queueAutoExtend = false;
                 currentLibraryContext = displayList;
                 playTrack(displayList.indexOf(item), currentLibraryContext);
             });
@@ -548,6 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pTitle = document.getElementById('playerTitle');
     const pArtist = document.getElementById('playerArtist');
     const pCover = document.getElementById('playerCover');
+    const playerBg = document.getElementById('playerBg');
     
     const progressBar = document.getElementById('progressBar');
     const currentTimeEl = document.getElementById('currentTime');
@@ -557,10 +581,147 @@ document.addEventListener('DOMContentLoaded', () => {
     const shuffleBtn = document.getElementById('shuffleBtn');
     const loopBtn = document.getElementById('loopBtn');
 
+    // Full-screen Now Playing elements
+    const nowPlaying = document.getElementById('nowPlaying');
+    const expandPlayerBtn = document.getElementById('expandPlayerBtn');
+    const npCover = document.getElementById('npCover');
+    const npTitle = document.getElementById('npTitle');
+    const npArtist = document.getElementById('npArtist');
+    const npBg = document.getElementById('npBg');
+    const npQueueSource = document.getElementById('npQueueSource');
+    const npQueueList = document.getElementById('npQueueList');
+
     let currentTrackIndex = -1;
     let currentLibraryContext = [];
+    let currentContextLabel = 'Queue';
+
+    // Media keys are handled twice (OS-level pynput hotkeys + the MediaSession
+    // API), which can fire next/prev almost simultaneously and skip two tracks.
+    // Collapse duplicate navigation triggers that arrive within a short window.
+    let lastNavTime = 0;
+    function navThrottle() {
+        const now = Date.now();
+        if (now - lastNavTime < 450) return false;
+        lastNavTime = now;
+        return true;
+    }
+    let queueAutoExtend = false; // when true (Discover/For You), append more recommendations as playback nears the end
+    let isExtendingQueue = false;
     let isShuffleEnabled = false;
     let isLoopEnabled = false;
+
+    // When playing from Discover recommendations, keep the queue growing so the
+    // full-screen list shows upcoming tracks instead of stopping after 12.
+    async function extendQueueIfNeeded() {
+        if (!queueAutoExtend || isExtendingQueue) return;
+        if (currentTrackIndex < currentLibraryContext.length - 3) return;
+        isExtendingQueue = true;
+        try {
+            const more = await fetchRecommendations();
+            if (more && more.length) {
+                const existing = new Set(currentLibraryContext.map(t => t && t.videoId));
+                const filtered = more.filter(t => t && t.videoId && !existing.has(t.videoId));
+                if (filtered.length) {
+                    currentLibraryContext.push(...filtered);
+                    renderNowPlaying();
+                }
+            }
+        } catch (e) {
+            console.error('Queue extend failed', e);
+        } finally {
+            isExtendingQueue = false;
+        }
+    }
+
+    function setExpandIcon(isOpen) {
+        const icon = expandPlayerBtn ? expandPlayerBtn.querySelector('i') : null;
+        if (!icon) return;
+        icon.classList.toggle('ph-arrows-out-simple', !isOpen);
+        icon.classList.toggle('ph-arrows-in-simple', isOpen);
+        expandPlayerBtn.title = isOpen ? 'Minimize' : 'Now Playing';
+    }
+    function openNowPlaying() {
+        if (currentTrackIndex < 0) return;
+        nowPlaying.classList.remove('hidden');
+        setExpandIcon(true);
+        renderNowPlaying();
+    }
+    function closeNowPlaying() {
+        nowPlaying.classList.add('hidden');
+        setExpandIcon(false);
+    }
+    function toggleNowPlaying() {
+        if (nowPlaying.classList.contains('hidden')) openNowPlaying();
+        else closeNowPlaying();
+    }
+    if (expandPlayerBtn) expandPlayerBtn.addEventListener('click', toggleNowPlaying);
+    if (pCover) pCover.addEventListener('click', openNowPlaying);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !nowPlaying.classList.contains('hidden')) closeNowPlaying();
+    });
+
+    // Refresh the full-screen view (cover, meta and queue) for the current track.
+    function renderNowPlaying() {
+        if (nowPlaying.classList.contains('hidden')) return;
+        const track = currentLibraryContext[currentTrackIndex];
+        if (!track) return;
+
+        const cover = track.thumbnail || 'https://via.placeholder.com/400';
+        npCover.src = cover;
+        npTitle.textContent = track.title || '';
+        npArtist.textContent = track.artists || '';
+        npBg.style.backgroundImage = `url("${cover}")`;
+        npQueueSource.textContent = currentContextLabel || 'Queue';
+
+        npQueueList.innerHTML = '';
+        currentLibraryContext.forEach((item, idx) => {
+            if (!item) return;
+            const row = document.createElement('div');
+            row.className = 'np-queue-item';
+            if (idx < currentTrackIndex) row.classList.add('played');
+            if (idx === currentTrackIndex) row.classList.add('current');
+
+            const isDownloaded = currentLibrary.some(t => t.videoId === item.videoId);
+            const dlBtnHTML = isDownloaded
+                ? `<button class="npq-btn npq-download" disabled title="Downloaded" style="color:#4caf50"><i class="ph-fill ph-check"></i></button>`
+                : `<button class="npq-btn npq-download" title="Download Offline"><i class="ph ph-download-simple"></i></button>`;
+            // Only downloaded tracks can be added to a playlist.
+            const addBtnHTML = isDownloaded
+                ? `<button class="npq-btn npq-addpl" title="Add to Playlist"><i class="ph ph-list-plus"></i></button>`
+                : `<button class="npq-btn npq-addpl" disabled title="Download first to add to a playlist"><i class="ph ph-list-plus"></i></button>`;
+
+            row.innerHTML = `
+                <img src="${item.thumbnail || 'https://via.placeholder.com/44'}" alt="">
+                <div class="npq-info">
+                    <div class="npq-title">${item.title || 'Unknown'}</div>
+                    <div class="npq-artist">${item.artists || ''}</div>
+                </div>
+                ${idx === currentTrackIndex ? '<i class="ph-fill ph-music-notes npq-eq"></i>' : ''}
+                <div class="npq-actions">
+                    ${addBtnHTML}
+                    ${dlBtnHTML}
+                </div>
+            `;
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('.npq-actions')) return;
+                playTrack(idx, currentLibraryContext);
+            });
+            const addBtn = row.querySelector('.npq-addpl');
+            if (addBtn && isDownloaded) addBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openPlaylistModal(item);
+            });
+            const dlBtn = row.querySelector('.npq-download');
+            if (dlBtn && !isDownloaded) dlBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                downloadTrack(item, dlBtn);
+            });
+            npQueueList.appendChild(row);
+        });
+
+        const activeRow = npQueueList.querySelector('.np-queue-item.current');
+        if (activeRow) activeRow.scrollIntoView({ block: 'nearest' });
+    }
 
     if(shuffleBtn) {
         shuffleBtn.addEventListener('click', () => {
@@ -591,29 +752,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function streamTrack(track, index, contextList) {
-        showToast(`Loading stream for ${track.title}...`, 'info');
-        try {
-            // Fetch streaming URL from backend
-            const res = await fetch(`/api/stream?video_id=${track.videoId}`);
-            const data = await res.json();
-            
-            if (res.ok && data.url) {
-                 const streamTrackObj = {
-                      ...track,
-                      audio: data.url // Replace local path with remote stream URL
-                 };
-                 // Inject into context so next/prev keeps working if stream succeeds
-                 const newContextList = [...contextList];
-                 newContextList[index] = streamTrackObj;
-                 
-                 playTrack(index, newContextList);
-            } else {
-                 throw new Error("Unable to fetch stream url");
-            }
-        } catch (err) {
-             console.error(err);
-             showToast('Failed to stream track.', 'error');
-        }
+        // Label the queue with the current Discover context (For You / search).
+        currentContextLabel = (discoverTitle && discoverTitle.textContent) || 'Discover';
+        // Only auto-grow the queue for "For You" recommendations (empty search box),
+        // not for explicit search results.
+        queueAutoExtend = (searchInput.value.trim() === '');
+        // Delegate to playTrack which resolves the stream URL itself.
+        // Pass a copy so we don't mutate the shared results array.
+        playTrack(index, [...contextList]);
     }
 
     function playTrack(index, contextList = currentLibraryContext) {
@@ -627,9 +773,18 @@ document.addEventListener('DOMContentLoaded', () => {
         pTitle.textContent = track.title;
         pArtist.textContent = track.artists;
         pCover.src = track.thumbnail || 'https://via.placeholder.com/60';
+        if (playerBg) playerBg.style.backgroundImage = track.thumbnail ? `url("${track.thumbnail}")` : 'none';
         playerContainer.classList.add('visible');
-        
-        audio.src = track.audio;
+        renderNowPlaying();
+        extendQueueIfNeeded();
+
+        // Local downloads have an audio path under /downloads; everything else
+        // (recommendations, search results) is streamed through /api/play, which
+        // redirects to a fresh source URL. Setting src synchronously (no await)
+        // preserves the autoplay/user-activation context so auto-advancing to
+        // the next track keeps playing automatically.
+        const isLocal = typeof track.audio === 'string' && track.audio.startsWith('/downloads');
+        audio.src = isLocal ? track.audio : `/api/play?video_id=${encodeURIComponent(track.videoId)}`;
         audio.play().catch(e => {
             console.error("Autoplay prevented or stream died:", e);
             updatePlayPauseUI(false);
@@ -677,6 +832,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     prevBtn.addEventListener('click', () => {
+        if (!navThrottle()) return;
         if (audio.currentTime > 3) {
             audio.currentTime = 0;
         } else {
@@ -689,6 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     nextBtn.addEventListener('click', () => {
+        if (!navThrottle()) return;
         if (isShuffleEnabled && currentLibraryContext.length > 1) {
             playRandomTrack();
         } else {

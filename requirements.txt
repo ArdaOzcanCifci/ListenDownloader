@@ -4,3 +4,5 @@ ytmusicapi
 yt-dlp
 requests
 aiofiles
+pywebview
+pynput

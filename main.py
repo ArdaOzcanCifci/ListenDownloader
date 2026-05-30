@@ -2,7 +2,7 @@ import os
 import json
 import asyncio
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -20,6 +20,18 @@ app = FastAPI(title="Listen Downloader Backend")
 # Cache to avoid recommending the same tracks repeatedly
 RECENT_RECOMMENDATIONS = deque(maxlen=200)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    """Prevent the embedded webview from serving stale HTML/CSS/JS so code
+    changes always take effect after a restart."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.startswith("/static"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # --- PyInstaller Path Resolution ---
 def resource_path(relative_path):
@@ -327,18 +339,63 @@ async def stream_audio(video_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/play")
+async def play_audio(video_id: str):
+    """
+    Resolves a streaming URL and redirects the client (audio element) to it.
+    Using a redirect lets the frontend set audio.src synchronously, which keeps
+    the browser's autoplay/user-activation context intact for auto-advancing
+    to the next track.
+    """
+    if not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'simulate': True,
+        'geturl': True
+    }
+
+    def get_stream_url():
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                return info.get('url')
+        except Exception as e:
+            raise Exception(str(e))
+
+    try:
+        url = await asyncio.to_thread(get_stream_url)
+        if url:
+            return RedirectResponse(url)
+        else:
+            raise HTTPException(status_code=404, detail="Stream URL not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 def start_server():
     uvicorn.run(app, host="127.0.0.1", port=8000, log_level="error")
 
 if __name__ == "__main__":
+    # Allow media to auto-play without a user gesture. WebView2 (the default
+    # backend on Windows) otherwise blocks programmatic playback that isn't
+    # triggered by a click, which prevents auto-advancing to the next track
+    # when the current one ends. Must be set before the webview starts.
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--autoplay-policy=no-user-gesture-required"
+
     # Start the FastAPI server in a separate daemon thread
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
     
-    # Create the PyWebView window
+    # Create the PyWebView window. A per-launch cache-busting param forces the
+    # webview to re-fetch index.html (and therefore the latest CSS/JS) instead
+    # of serving a stale cached page.
+    import time
     window = webview.create_window(
         "Listen Downloader", 
-        "http://127.0.0.1:8000/", 
+        f"http://127.0.0.1:8000/?_={int(time.time())}", 
         width=1200, 
         height=800,
         min_size=(800, 600),

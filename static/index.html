@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
 
@@ -32,6 +32,16 @@
                     <span>My Library</span>
                 </li>
             </ul>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <h4 class="sidebar-section-title">Playlists</h4>
+                    <button class="icon-btn" id="sidebarNewPlaylistBtn" title="New Playlist"><i class="ph ph-plus"></i></button>
+                </div>
+                <ul id="playlistsList" class="playlists-list sidebar-playlists">
+                    <!-- All Tracks + playlists injected here -->
+                </ul>
+            </div>
         </nav>
 
         <!-- Main Content Area -->
@@ -83,13 +93,6 @@
                 </div>
 
                 <div class="library-container">
-                    <div class="playlists-sidebar">
-                        <h3>Playlists</h3>
-                        <ul id="playlistsList" class="playlists-list">
-                            <!-- Playlists injected here -->
-                        </ul>
-                    </div>
-                    
                     <div class="library-main">
                         <div id="libLoader" class="loader hidden"></div>
                         <h3 id="librarySectionTitle">All Tracks</h3>
@@ -104,6 +107,7 @@
 
     <!-- Bottom Audio Player -->
     <div class="audio-player glass" id="player">
+        <div class="player-bg" id="playerBg"></div>
         <audio id="audioElement"></audio>
         
         <div class="track-info">
@@ -134,6 +138,8 @@
             <i class="ph-fill ph-speaker-high" id="muteIcon"></i>
             <input type="range" id="volumeBar" min="0" max="100" value="100">
         </div>
+
+        <button class="ctrl-btn expand-btn" id="expandPlayerBtn" title="Now Playing"><i class="ph ph-arrows-out-simple"></i></button>
     </div>
 
     <!-- Playlist Modal -->
@@ -156,8 +162,28 @@
     </div>
 
 
+    <!-- Full-screen Now Playing view -->
+    <div id="nowPlaying" class="now-playing hidden">
+        <div class="np-bg" id="npBg"></div>
+
+        <div class="np-art-section">
+            <img id="npCover" src="https://via.placeholder.com/400" alt="Cover">
+            <div class="np-meta">
+                <h1 id="npTitle">No Track Selected</h1>
+                <p id="npArtist">Listen Downloader</p>
+            </div>
+        </div>
+
+        <div class="np-queue">
+            <h3 class="np-queue-source" id="npQueueSource">Queue</h3>
+            <div class="np-queue-list" id="npQueueList">
+                <!-- Queue items injected here -->
+            </div>
+        </div>
+    </div>
+
     <div id="toastContainer"></div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=3"></script>
 </body>
 </html>

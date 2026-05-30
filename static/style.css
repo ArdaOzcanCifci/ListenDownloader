@@ -76,6 +76,7 @@ body::after {
     display: flex;
     flex-direction: column;
     padding: 2rem 1.5rem;
+    padding-bottom: calc(90px + 1.5rem); /* clear the full-width player bar */
     border-right: 1px solid var(--glass-border);
     z-index: 10;
 }
@@ -134,6 +135,59 @@ body::after {
 .nav-links li i {
     font-size: 1.25rem;
 }
+
+/* Playlists section in the left sidebar */
+.sidebar-section {
+    margin-top: 1.75rem;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.sidebar-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding: 0 16px;
+}
+
+.sidebar-section-title {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#sidebarNewPlaylistBtn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+#sidebarNewPlaylistBtn:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-playlists {
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.sidebar-playlists::-webkit-scrollbar { width: 8px; }
+.sidebar-playlists::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+.sidebar-playlists::-webkit-scrollbar-track { background: transparent; }
 
 /* Main Content Area */
 .content-area {
@@ -696,17 +750,40 @@ body::after {
 .audio-player {
     position: fixed;
     bottom: 0;
-    left: 260px;
-    width: calc(100% - 260px);
+    left: 0;
+    width: 100%;
     height: 90px;
     border-top: 1px solid var(--glass-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 2rem;
-    z-index: 100;
+    z-index: 300; /* above the full-screen Now Playing view */
     transform: translateY(100%);
     transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    /* Solid base + blurred artwork so the bar matches the Now Playing view */
+    background: var(--bg-main);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: hidden;
+}
+
+/* Blurred artwork backdrop for the mini player (mirrors .np-bg) */
+.player-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(60px) brightness(0.4);
+    transform: scale(1.2);
+    opacity: 0.6;
+    z-index: 0;
+    transition: background-image 0.4s ease;
+}
+
+.audio-player > *:not(.player-bg) {
+    position: relative;
+    z-index: 1;
 }
 
 .audio-player.visible {
@@ -895,4 +972,232 @@ body::after {
 
 @keyframes fadeOut {
     to { transform: translateX(100%); opacity: 0; }
+}
+
+/* ==== Expand button in mini player ==== */
+.expand-btn {
+    margin-left: 1.25rem;
+    flex-shrink: 0;
+    font-size: 1.3rem;
+    color: var(--text-muted);
+}
+.expand-btn:hover { color: var(--text-main); }
+
+/* ==== Full-screen Now Playing ==== */
+.now-playing {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 90px; /* keep the mini player bar visible for controls */
+    z-index: 200;
+    display: flex;
+    gap: 3rem;
+    padding: 3.5rem 3.5rem 2rem;
+    background: var(--bg-main);
+    overflow: hidden;
+    animation: npSlideUp 0.35s ease forwards;
+}
+
+.now-playing.hidden { display: none; }
+
+/* Blurred artwork backdrop */
+.np-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(60px) brightness(0.4);
+    transform: scale(1.2);
+    opacity: 0.6;
+    z-index: -1;
+    transition: background-image 0.4s ease;
+}
+
+.np-art-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+}
+
+.np-art-section img {
+    width: min(42vh, 420px);
+    height: min(42vh, 420px);
+    object-fit: cover;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.np-meta {
+    margin-top: 2rem;
+    text-align: center;
+    max-width: 90%;
+}
+
+.np-meta h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.np-meta p {
+    margin-top: 0.5rem;
+    font-size: 1.2rem;
+    color: var(--text-muted);
+}
+
+.np-queue {
+    width: 38%;
+    min-width: 320px;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 1.25rem;
+}
+
+.np-queue-source {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    padding: 0 0.25rem;
+    flex-shrink: 0;
+}
+
+.np-queue-list {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 4px;
+}
+
+.np-queue-list::-webkit-scrollbar {
+    width: 8px;
+}
+.np-queue-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+.np-queue-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.np-queue-group-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 0.75rem 0.25rem 0.4rem;
+}
+
+.np-queue-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.np-queue-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+.np-queue-item.played { opacity: 0.5; }
+
+.np-queue-item.current {
+    background: rgba(94, 53, 177, 0.25);
+    border: 1px solid rgba(126, 87, 194, 0.5);
+}
+
+.np-queue-item img {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.np-queue-item .npq-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.np-queue-item .npq-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.np-queue-item .npq-artist {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.np-queue-item .npq-eq {
+    color: var(--accent-hover);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.npq-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.np-queue-item:hover .npq-actions,
+.np-queue-item.current .npq-actions {
+    opacity: 1;
+}
+
+.npq-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.15rem;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.npq-btn:hover:not(:disabled) {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.npq-btn:disabled { cursor: default; opacity: 0.35; }
+.npq-btn.npq-download:disabled { opacity: 1; }
+
+@keyframes npSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+@media (max-width: 820px) {
+    .now-playing { flex-direction: column; gap: 1.5rem; padding: 3rem 1.5rem 1.5rem; overflow-y: auto; }
+    .np-queue { width: 100%; max-width: none; min-width: 0; }
+    .np-art-section img { width: min(40vw, 240px); height: min(40vw, 240px); }
 }
